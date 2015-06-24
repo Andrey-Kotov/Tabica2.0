@@ -1,13 +1,14 @@
-# Tabica2.0
-О чистке наименований продуктов
+#TABICA
 
 #Загружаем библиотеки
+
+import string #для транлитерации
+import re
+import pandas
+
 #Создаем словарь для транслитерации
 
-import string
-
-def translit1(string):
-    """ This function works just fine """
+def translit(string):
     capital_letters = {
         u'А': u'A',
         u'Б': u'B',
@@ -95,77 +96,146 @@ def translit1(string):
         translit_string += char
 
     return translit_string
-}
+	
+	
+#Читаем табицу из csv (utf-8 без BOM)
 
-#Читаем табицу из csv
-#Разделяем пробелами заглавные буквы
-{ 
-product_matrix=[]
+tabica = (pandas.read_csv("Tabica_res.csv", sep=";"))
 
-for j in product:
+#Разделяем пробелами слова верхнего регистра и числа, что справа от букв
+
+product_name_split_by_register=[]
+product_name_first=list(tabica.product_name_first)
+
+for j in product_name_first:
     textnew = ("")
-    k = 1
+    register = 1                                   #Счетчик регистра
+    letter = 0                                     #Счетчик букв
+    number = 0
     for i in j:
-        if (i).isalpha()==True:                    #Буква ли?
-            if (i).istitle()==False:               #Заглавная ли буква?
+        if (i).isalpha()==True:                    #Если буква то:
+            letter = 1
+            number = 0
+            if (i).istitle()==False:               #Если не заглавная то:
                 textnew = textnew + (i)
-                k=0
-            else:
-                k= k + 1
-                if k < 2:                          #Предыдущая буква просная?
+                register = 0
+            else:                                  #Если строчная то:
+                register= register + 1
+                if register < 2:                   #Если предыдущая буква не заглавная то:
                     textnew = textnew + " " + (i)
+                else:                              #Если предыдущая буква заглавная то:
+                    textnew = textnew + (i)
+        else:                                      
+            register = register + 1
+            if (i).isdigit()==True:
+                if number<letter:
+                    textnew = textnew + " " + (i)
+                    letter = 0
+                    number = 1
                 else:
                     textnew = textnew + (i)
-        else:
-            k=k+1
-            textnew = textnew + (i)
+            else:
+                textnew = textnew + (i)
     textnew = textnew.strip()
-    product_matrix.append((textnew.replace("  ", " ")))
- }
+    product_name_split_by_register.append((textnew.replace("  ", " ")))
+	
+
 #Переводим в прописную латиницу
-{
-_1_product_name_translit=[]
 
-for a in product_name_departure:
+product_name_translit=[]
+
+for a in product_name_split_by_register:
     a=a.lower()
-    _1_product_name_translit.append(translit1(a))
-_1_product_name_translit
-}
+    product_name_translit.append(translit(a))
+	
 #Разрезаем наименования на элементы
-{
-import re
 
-#_2_product_name_split = []
+product_name_split = []
 
-
-for a in _1_product_name_translit:
+for a in product_name_translit:
     #print (a)
     a = str(a)
-    _2_product_name_split.append(re.split('; |, |\*|\n|\-|\.|\s|/|/. ',a))
-    
-_2_product_name_split
-}
+    product_name_split.append(re.split('; |, |\*|\n|\-|\.|\s|/|/. ',a))
+
+#Строим матрицу [параметр, состав описания]
+
+tabica_split_name = []
+a=list()
+i=0
+
+for element in product_name_split:
+    a = list(element)
+    if tabica.category1[i]!="-":
+        a.insert(0, tabica.category1[i])
+        tabica_split_name.append(a)
+    i=i+1
+
 #Раскладываем матрицу на биграммы
-{
-lines = range(0,len(example))
-parameter = range(0,2)
+
+lines = range(0,len(tabica_split_name))
+parameter = range(0,1)
+dic_bgramm = []
+dic_ogramm = []
 
 er=0
 
 for p in parameter:
     for i in lines:
-        if example[i][p]!="":
-            index=range(0,len(example[i]))
+        if tabica_split_name[i][p]!="-":
+            index=range(0,len(tabica_split_name[i]))
             for j in index:
-                if len(example[i][j])>1:                     #пропускаем значения меньше 2 символов
+                if len(tabica_split_name[i][j])>1:             #пропускаем значения меньше 2 символов
                     if p != j:
-                        print (example[i][p], example[i][j]) #parameter,
+                        bgramm = []
+                        bgramm.append(tabica_split_name[i][p]) 
+                        bgramm.append(tabica_split_name[i][j]) #parameter,
+                        dic_bgramm.append(bgramm)
+                        dic_ogramm.append(bgramm[1])
                 else:
                     er=er+1
         else:
             er=er+1
-#print("пропущенных: "+str(er))
-}
+
+#Собираем модель для словаря, подсчитываем частоту пар и исключений
+
+dic_scheme=[]
+dic_value=[]
+dic=[]
+j=0
+
+dic_bgramm.sort()
+
+for i in dic_bgramm:
+    j=j+1
+    if i!=dic_bgramm[j-2]:         #Пропускаем повторы
+        dic_gram = []
+        b=dic_bgramm.count(i,)     #Считаем частоту пары
+        o=dic_ogramm.count(i[1])   #Считаем кол-во исключений
+        if b>=o>2:                 # b<=o>1
+            dic_gram.append(i)
+            dic_gram.append(b)
+            #dic_gram.append(o)
+            dic_scheme.append(dic_gram)
+            dic.append([i[1],i[0]]) #Собираем словарь, изменив положение на [ключ: значение]
+            dic_value.append([i[1],b])
+
+dic=dict(dic)
+dic_value=dict(dic_value)
+
+#Создаем столбец по описаниям
+
+for i in product_name_split:
+    clarity = []
+    for j in i:
+        clarity.append([dic_value.get(j,(0)),j])
+        clarity.sort(reverse=True)
+    if clarity[0][0]!=0:
+        print(dic[clarity[0][1]])
+    else:
+        print('-')
+
+
+
 #Проводим оценку вложенности
 #Считаем метрики типа TF-IDF
 #Создаем словарь из устоявшихся биграмм (n-gramm?)
